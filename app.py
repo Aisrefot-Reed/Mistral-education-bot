@@ -70,8 +70,8 @@ class AIAssistant:
                 prompt=messages[-1]["content"],
                 model=self.model,
                 max_new_tokens=500,
-                temperature=0.7,
-                top_p=0.9,
+                temperature=0.4,
+                top_p=0.7,
                 do_sample=True
             )
 
