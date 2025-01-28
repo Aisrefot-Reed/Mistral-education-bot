@@ -14,7 +14,7 @@ class AIAssistant:
         )
         self.model = "mistralai/Mistral-7B-Instruct-v0.3"
 
-    def generate_response(self, prompt, language, tone, pdf_file):
+    def generate_response(self, prompt, language, tone, mode, topic, current_level, available_time, learning_method, goal, pdf_file):
         try:
             # Обработка PDF-файла, если он загружен
             pdf_text = ""
@@ -24,6 +24,17 @@ class AIAssistant:
                     pdf_text += page.extract_text()
 
             # Формирование сообщения для модели
+            if mode == "Chat":
+                user_content = f"{prompt}\n\nAdditional context from PDF:\n{pdf_text}" if pdf_text else prompt
+            elif mode == "Study plan":
+                user_content = (
+                    f"Тема: {topic}\n"
+                    f"Текущий уровень: {current_level}\n"
+                    f"Доступное время: {available_time}\n"
+                    f"Метод обучения: {learning_method}\n"
+                    f"Цель: {goal}\n"
+                )
+
             messages = [
                 {
                     "role": "system",
@@ -31,7 +42,7 @@ class AIAssistant:
                 },
                 {
                     "role": "user",
-                    "content": f"{prompt}\n\nAdditional context from PDF:\n{pdf_text}" if pdf_text else prompt
+                    "content": user_content
                 }
             ]
 
@@ -71,9 +82,42 @@ with gr.Blocks() as demo:
                 choices=["формальный", "неформальный", "юмористический", "серьезный"],
                 value="формальный"
             )
+            mode = gr.Dropdown(
+                label="Выберите режим работы",
+                choices=["Chat", "Study plan"],
+                value="Chat"
+            )
+            topic = gr.Textbox(
+                label="Тема или навык для изучения",
+                visible=False
+            )
+            current_level = gr.Dropdown(
+                label="Текущий уровень знаний",
+                choices=["начальный", "средний", "продвинутый"],
+                visible=False
+            )
+            available_time = gr.Number(
+                label="Часы в неделю, доступные для обучения",
+                visible=False
+            )
+            learning_method = gr.Dropdown(
+                label="Предпочтительный метод обучения",
+                choices=["визуальный", "слуховой", "практический", "чтение"],
+                visible=False
+            )
+            goal = gr.Textbox(
+                label="Конкретная цель обучения или целевой уровень навыков",
+                visible=False
+            )
             pdf_file = gr.File(
                 label="Загрузите PDF для дополнительного контекста (необязательно)",
                 file_types=[".pdf"]
+            )
+
+        with gr.Column():
+            output = gr.Textbox(
+                label="Ответ",
+                lines=10
             )
             prompt = gr.Textbox(
                 lines=4,
@@ -82,16 +126,24 @@ with gr.Blocks() as demo:
             )
             submit_button = gr.Button("Получить ответ")
 
-        with gr.Column():
-            output = gr.Textbox(
-                label="Ответ",
-                lines=10
-            )
+    # Функция для обновления видимости полей на основе выбранного режима
+    def update_fields(selected_mode):
+        if selected_mode == "Study plan":
+            return gr.update(visible=True), gr.update(visible=True), gr.update(visible=True), gr.update(visible=True), gr.update(visible=True), gr.update(visible=False)
+        else:
+            return gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=True)
+
+    # Обновление видимости полей при изменении режима
+    mode.change(
+        update_fields,
+        inputs=[mode],
+        outputs=[topic, current_level, available_time, learning_method, goal, prompt]
+    )
 
     # Определение действия при нажатии кнопки
     submit_button.click(
         fn=assistant.generate_response,
-        inputs=[prompt, language, tone, pdf_file],
+        inputs=[prompt, language, tone, mode, topic, current_level, available_time, learning_method, goal, pdf_file],
         outputs=output
     )
 
