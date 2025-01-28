@@ -23,10 +23,11 @@ class AIAssistant:
                 for page in pdf_reader.pages:
                     pdf_text += page.extract_text()
 
-            # Formulate message for the model
+            # Formulate message for the model based on mode
             if mode == "Chat":
                 user_content = f"{prompt}\n\nAdditional context from PDF:\n{pdf_text}" if pdf_text else prompt
-            elif mode == "Study plan":
+                system_content = f"You are a helpful AI assistant that provides {tone} responses in {language}. Default language: English. Always respond in the selected language, but use English if no language is explicitly selected."
+            else:  # Study plan mode
                 user_content = (
                     f"Topic: {topic}\n"
                     f"Current level: {current_level}\n"
@@ -34,11 +35,16 @@ class AIAssistant:
                     f"Learning method: {learning_method}\n"
                     f"Goal: {goal}\n"
                 )
+                system_content = (
+                    f"You are an educational AI assistant that creates personalized study plans. "
+                    f"Provide {tone} responses in {language}. Default language: English. "
+                    f"Create a structured learning plan with clear milestones and recommended resources."
+                )
 
             messages = [
                 {
                     "role": "system",
-                    "content": f"You are a helpful AI assistant that provides {tone} responses in {language}. Default language: English. Always respond in the selected language, but use English if no language is explicitly selected."
+                    "content": system_content
                 },
                 {
                     "role": "user",
@@ -124,7 +130,9 @@ with gr.Blocks() as demo:
                 placeholder="Enter your question...",
                 label="Question"
             )
-            submit_button = gr.Button("Get response")
+            with gr.Row():
+                submit_button = gr.Button("Get response")
+                clear_button = gr.Button("Clear history")
 
     # Function to update field visibility based on selected mode
     def update_fields(selected_mode):
@@ -133,6 +141,10 @@ with gr.Blocks() as demo:
         else:
             return gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=True)
 
+    # Function to clear the history
+    def clear_history():
+        return "", "", None  # Clear prompt, output, and PDF file
+
     # Update field visibility when mode changes
     mode.change(
         update_fields,
@@ -140,11 +152,18 @@ with gr.Blocks() as demo:
         outputs=[topic, current_level, available_time, learning_method, goal, prompt]
     )
 
-    # Define action when button is clicked
+    # Define action when submit button is clicked
     submit_button.click(
         fn=assistant.generate_response,
         inputs=[prompt, language, tone, mode, topic, current_level, available_time, learning_method, goal, pdf_file],
         outputs=output
+    )
+
+    # Define action when clear button is clicked
+    clear_button.click(
+        fn=clear_history,
+        inputs=[],
+        outputs=[prompt, output, pdf_file]
     )
 
 # Launch the application
