@@ -4,35 +4,35 @@ from huggingface_hub import InferenceClient
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader
 
-# Загрузка переменных окружения
+# Load environment variables
 load_dotenv()
 
 class AIAssistant:
     def __init__(self):
         self.client = InferenceClient(
-            token=os.getenv('HF_API_KEY')  # Получение API-ключа из переменных окружения
+            token=os.getenv('HF_API_KEY')  # Retrieve API key from environment variables
         )
         self.model = "mistralai/Mistral-7B-Instruct-v0.3"
 
     def generate_response(self, prompt, language, tone, mode, topic, current_level, available_time, learning_method, goal, pdf_file):
         try:
-            # Обработка PDF-файла, если он загружен
+            # Process PDF file if uploaded
             pdf_text = ""
             if pdf_file is not None:
                 pdf_reader = PdfReader(pdf_file.name)
                 for page in pdf_reader.pages:
                     pdf_text += page.extract_text()
 
-            # Формирование сообщения для модели
+            # Formulate message for the model
             if mode == "Chat":
                 user_content = f"{prompt}\n\nAdditional context from PDF:\n{pdf_text}" if pdf_text else prompt
             elif mode == "Study plan":
                 user_content = (
-                    f"Тема: {topic}\n"
-                    f"Текущий уровень: {current_level}\n"
-                    f"Доступное время: {available_time}\n"
-                    f"Метод обучения: {learning_method}\n"
-                    f"Цель: {goal}\n"
+                    f"Topic: {topic}\n"
+                    f"Current level: {current_level}\n"
+                    f"Available time: {available_time}\n"
+                    f"Learning method: {learning_method}\n"
+                    f"Goal: {goal}\n"
                 )
 
             messages = [
@@ -46,7 +46,7 @@ class AIAssistant:
                 }
             ]
 
-            # Генерация ответа с использованием модели
+            # Generate response using the model
             response = self.client.text_generation(
                 prompt=messages[-1]["content"],
                 model=self.model,
@@ -59,94 +59,94 @@ class AIAssistant:
             return response
 
         except Exception as e:
-            print(f"Error occurred: {str(e)}")  # Логирование ошибки
-            return f"Произошла ошибка: {str(e)}"
+            print(f"Error occurred: {str(e)}")  # Log the error
+            return f"An error occurred: {str(e)}"
 
-# Создание экземпляра ассистента
+# Create an instance of the assistant
 assistant = AIAssistant()
 
-# Определение интерфейса Gradio
+# Define the Gradio interface
 with gr.Blocks() as demo:
     gr.Markdown("# AI Educational Assistant")
-    gr.Markdown("Задавайте вопросы и получайте подробные ответы")
+    gr.Markdown("Ask questions and receive detailed answers")
 
     with gr.Row():
         with gr.Column():
             language = gr.Dropdown(
-                label="Выберите язык ответа",
+                label="Select response language",
                 choices=["English", "Русский", "Español", "Deutsch"],
                 value="English"
             )
             tone = gr.Dropdown(
-                label="Выберите тон ответа",
-                choices=["формальный", "неформальный", "юмористический", "серьезный"],
-                value="формальный"
+                label="Select response tone",
+                choices=["formal", "informal", "humorous", "serious"],
+                value="formal"
             )
             mode = gr.Dropdown(
-                label="Выберите режим работы",
+                label="Select operation mode",
                 choices=["Chat", "Study plan"],
                 value="Chat"
             )
             topic = gr.Textbox(
-                label="Тема или навык для изучения",
+                label="Topic or skill to study",
                 visible=False
             )
             current_level = gr.Dropdown(
-                label="Текущий уровень знаний",
-                choices=["начальный", "средний", "продвинутый"],
+                label="Current knowledge level",
+                choices=["beginner", "intermediate", "advanced"],
                 visible=False
             )
             available_time = gr.Number(
-                label="Часы в неделю, доступные для обучения",
+                label="Hours per week available for study",
                 visible=False
             )
             learning_method = gr.Dropdown(
-                label="Предпочтительный метод обучения",
-                choices=["визуальный", "слуховой", "практический", "чтение"],
+                label="Preferred learning method",
+                choices=["visual", "auditory", "practical", "reading"],
                 visible=False
             )
             goal = gr.Textbox(
-                label="Конкретная цель обучения или целевой уровень навыков",
+                label="Specific learning goal or target skill level",
                 visible=False
             )
             pdf_file = gr.File(
-                label="Загрузите PDF для дополнительного контекста (необязательно)",
+                label="Upload PDF for additional context (optional)",
                 file_types=[".pdf"]
             )
 
         with gr.Column():
             output = gr.Textbox(
-                label="Ответ",
+                label="Response",
                 lines=10
             )
             prompt = gr.Textbox(
                 lines=4,
-                placeholder="Введите ваш вопрос...",
-                label="Вопрос"
+                placeholder="Enter your question...",
+                label="Question"
             )
-            submit_button = gr.Button("Получить ответ")
+            submit_button = gr.Button("Get response")
 
-    # Функция для обновления видимости полей на основе выбранного режима
+    # Function to update field visibility based on selected mode
     def update_fields(selected_mode):
         if selected_mode == "Study plan":
             return gr.update(visible=True), gr.update(visible=True), gr.update(visible=True), gr.update(visible=True), gr.update(visible=True), gr.update(visible=False)
         else:
             return gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=True)
 
-    # Обновление видимости полей при изменении режима
+    # Update field visibility when mode changes
     mode.change(
         update_fields,
         inputs=[mode],
         outputs=[topic, current_level, available_time, learning_method, goal, prompt]
     )
 
-    # Определение действия при нажатии кнопки
+    # Define action when button is clicked
     submit_button.click(
         fn=assistant.generate_response,
         inputs=[prompt, language, tone, mode, topic, current_level, available_time, learning_method, goal, pdf_file],
         outputs=output
     )
 
-# Запуск приложения
+# Launch the application
 if __name__ == "__main__":
     demo.launch()
