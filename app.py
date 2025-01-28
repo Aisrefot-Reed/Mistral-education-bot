@@ -38,7 +38,7 @@ class AIAssistant:
             messages = [
                 {
                     "role": "system",
-                    "content": f"You are a helpful AI assistant that provides {tone} responses in {language}."
+                    "content": f"You are a helpful AI assistant that provides {tone} responses in {language}. Default language: English. Always respond in the selected language, but use English if no language is explicitly selected."
                 },
                 {
                     "role": "user",
