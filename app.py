@@ -26,7 +26,15 @@ class AIAssistant:
             # Formulate message for the model based on mode
             if mode == "Chat":
                 user_content = f"{prompt}\n\nAdditional context from PDF:\n{pdf_text}" if pdf_text else prompt
-                system_content = f"You are a helpful AI assistant that provides {tone} responses in {language}. Default language: English. Always respond in the selected language, but use English if no language is explicitly selected."
+                system_content = (
+                    f"You are an AI assistant that follows these rules strictly:\n"
+                    f"1. Always respond in {language} (default: English)\n"
+                    f"2. Use {tone} tone\n"
+                    f"3. Keep responses concise and directly related to the question\n"
+                    f"4. Do not add unnecessary information or elaborations\n"
+                    f"5. If you don't know something, say so directly\n"
+                    f"6. Don't make assumptions beyond what's asked\n"
+                    f"7. Focus only on answering the specific question asked"
             else:  # Study plan mode
                 user_content = (
                     f"Topic: {topic}\n"
@@ -36,9 +44,14 @@ class AIAssistant:
                     f"Goal: {goal}\n"
                 )
                 system_content = (
-                    f"You are an educational AI assistant that creates personalized study plans. "
-                    f"Provide {tone} responses in {language}. Default language: English. "
-                    f"Create a structured learning plan with clear milestones and recommended resources."
+                    f"You are an educational planner that:\n"
+                    f"1. Creates structured study plans in {language} (default: English)\n"
+                    f"2. Uses {tone} tone\n"
+                    f"3. Focuses strictly on the provided parameters\n"
+                    f"4. Provides specific, actionable steps\n"
+                    f"5. Includes clear milestones and timeframes\n"
+                    f"6. Stays within the specified available time\n"
+                    f"7. Matches the learning method preference"
                 )
 
             messages = [
