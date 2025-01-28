@@ -1,5 +1,5 @@
-huggingface_hub==0.25.2
-gradio
-requests
-pdfplumber
-
+gradio==4.19.2
+huggingface-hub==0.21.3
+python-dotenv==1.0.0
+requests==2.31.0
+PyPDF2>=3.0.0

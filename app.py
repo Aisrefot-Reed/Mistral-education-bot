@@ -1,120 +1,100 @@
+import os
 import gradio as gr
 from huggingface_hub import InferenceClient
-import pdfplumber
+from dotenv import load_dotenv
+from PyPDF2 import PdfReader
 
-# Используемую модель оставляем без изменений
-client = InferenceClient("HuggingFaceH4/zephyr-7b-beta")
+# Загрузка переменных окружения
+load_dotenv()
 
-# Функция для работы с моделью
-def respond(message, history: list[tuple[str, str]], system_message, max_tokens, temperature, top_p):
-    messages = [{"role": "system", "content": system_message}]
+class AIAssistant:
+    def __init__(self):
+        self.client = InferenceClient(
+            token=os.getenv('HF_API_KEY')  # Получение API-ключа из переменных окружения
+        )
+        self.model = "mistralai/Mistral-7B-Instruct-v0.3"
 
-    for val in history:
-        if val[0]:
-            messages.append({"role": "user", "content": val[0]})
-        if val[1]:
-            messages.append({"role": "assistant", "content": val[1]})
+    def generate_response(self, prompt, language, tone, pdf_file):
+        try:
+            # Обработка PDF-файла, если он загружен
+            pdf_text = ""
+            if pdf_file is not None:
+                pdf_reader = PdfReader(pdf_file.name)
+                for page in pdf_reader.pages:
+                    pdf_text += page.extract_text()
 
-    messages.append({"role": "user", "content": message})
-    response = ""
+            # Формирование сообщения для модели
+            messages = [
+                {
+                    "role": "system",
+                    "content": f"You are a helpful AI assistant that provides {tone} responses in {language}."
+                },
+                {
+                    "role": "user",
+                    "content": f"{prompt}\n\nAdditional context from PDF:\n{pdf_text}" if pdf_text else prompt
+                }
+            ]
 
-    for message in client.chat_completion(
-        messages,
-        max_tokens=max_tokens,
-        stream=True,
-        temperature=temperature,
-        top_p=top_p,
-    ):
-        token = message.choices[0].delta.content
-        response += token
-        yield response
+            # Генерация ответа с использованием модели
+            response = self.client.text_generation(
+                prompt=messages[-1]["content"],
+                model=self.model,
+                max_new_tokens=500,
+                temperature=0.7,
+                top_p=0.9,
+                do_sample=True
+            )
 
-# Функция для обработки PDF-файлов
-def process_pdf(file):
-    try:
-        with pdfplumber.open(file.name) as pdf:
-            text = ""
-            for page in pdf.pages:
-                text += page.extract_text() + "\n"
-        return f"Содержимое PDF:\n{text[:1000]}..."  # Ограничиваем вывод 1000 символами
-    except Exception as e:
-        return f"Ошибка при обработке PDF: {e}"
+            return response
 
-# Функция для генерации Study Plan
-def generate_study_plan(topic, level, time, method, goal):
-    prompt = (
-        f"Создай учебный план по теме '{topic}' для уровня '{level}', "
-        f"с учетом {time} часов в неделю, предпочтительным методом обучения '{method}'. "
-        f"Цель обучения: '{goal}'."
-    )
-    return prompt  # Можете заменить это на вызов модели, если потребуется.
+        except Exception as e:
+            print(f"Error occurred: {str(e)}")  # Логирование ошибки
+            return f"Произошла ошибка: {str(e)}"
 
-# Создание интерфейса
+# Создание экземпляра ассистента
+assistant = AIAssistant()
+
+# Определение интерфейса Gradio
 with gr.Blocks() as demo:
+    gr.Markdown("# AI Educational Assistant")
+    gr.Markdown("Задавайте вопросы и получайте подробные ответы")
+
     with gr.Row():
-        # Левая панель (30% ширины)
-        with gr.Column(scale=3):
-            mode_choice = gr.Radio(
-                choices=["Chat", "Study plan", "Option 2"], value="Chat", label="Выберите режим"
+        with gr.Column():
+            language = gr.Dropdown(
+                label="Выберите язык ответа",
+                choices=["English", "Русский", "Español", "Deutsch"],
+                value="English"
+            )
+            tone = gr.Dropdown(
+                label="Выберите тон ответа",
+                choices=["формальный", "неформальный", "юмористический", "серьезный"],
+                value="формальный"
+            )
+            pdf_file = gr.File(
+                label="Загрузите PDF для дополнительного контекста (необязательно)",
+                file_types=[".pdf"]
+            )
+            prompt = gr.Textbox(
+                lines=4,
+                placeholder="Введите ваш вопрос...",
+                label="Вопрос"
+            )
+            submit_button = gr.Button("Получить ответ")
+
+        with gr.Column():
+            output = gr.Textbox(
+                label="Ответ",
+                lines=10
             )
 
-            # Окно для "Study plan", по умолчанию скрыто
-            with gr.Group(visible=False) as study_plan_panel:
-                topic = gr.Textbox(label="Тема для изучения")
-                level = gr.Radio(
-                    choices=["Начальный", "Средний", "Продвинутый"], label="Текущий уровень знаний"
-                )
-                time = gr.Number(label="Часы в неделю, доступные для обучения")
-                method = gr.Radio(
-                    choices=["Визуальный", "Слуховой", "Практический", "Чтение"],
-                    label="Предпочтительный метод обучения",
-                )
-                goal = gr.Textbox(label="Цель обучения")
-                submit_button = gr.Button("Создать учебный план")
-                study_plan_output = gr.Textbox(label="Ваш учебный план", interactive=False)
-                
-                # Генерация Study Plan
-                submit_button.click(
-                    generate_study_plan,
-                    inputs=[topic, level, time, method, goal],
-                    outputs=study_plan_output,
-                )
+    # Определение действия при нажатии кнопки
+    submit_button.click(
+        fn=assistant.generate_response,
+        inputs=[prompt, language, tone, pdf_file],
+        outputs=output
+    )
 
-            # Кнопка загрузки PDF
-            pdf_upload = gr.File(label="Загрузите PDF", file_types=[".pdf"])
-            pdf_output = gr.Textbox(label="Результат обработки PDF", interactive=False)
-            pdf_upload.change(process_pdf, inputs=pdf_upload, outputs=pdf_output)
-
-        # Правая панель (70% ширины)
-        with gr.Column(scale=7):
-            chat_input = gr.Textbox(label="Введите сообщение", placeholder="Введите ваш запрос...")
-            chat_output = gr.Textbox(label="Ответ", placeholder="Ответ модели...", interactive=False)
-            send_button = gr.Button("Отправить")
-
-            # Логика для респондера
-            def handle_mode(message, system_message, mode):
-                if mode == "Study plan":
-                    return "Для генерации учебного плана используйте левую панель."
-                return list(respond(message, [], system_message, 512, 0.7, 0.95))
-
-            # Связываем ввод с обработкой
-            send_button.click(
-                handle_mode,
-                inputs=[chat_input, "Вы системный промпт", mode_choice],
-                outputs=chat_output,
-            )
-
-    # Управление видимостью "Study plan"
-    def toggle_mode(mode):
-        return {"visible": mode == "Study plan"}
-
-    mode_choice.change(toggle_mode, inputs=[mode_choice], outputs=[study_plan_panel])
-
-# Запуск интерфейса
-if __name__ == "__main__":
-    demo.launch()
-
-
-
+# Запуск приложения
 if __name__ == "__main__":
     demo.launch()
