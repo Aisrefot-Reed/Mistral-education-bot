@@ -34,7 +34,7 @@ class AIAssistant:
                     f"4. Do not add unnecessary information or elaborations\n"
                     f"5. If you don't know something, say so directly\n"
                     f"6. Don't make assumptions beyond what's asked\n"
-                    f"7. Focus only on answering the specific question asked"
+                    f"7. Focus only on answering the specific question asked")
             else:  # Study plan mode
                 user_content = (
                     f"Topic: {topic}\n"
