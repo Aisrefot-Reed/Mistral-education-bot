@@ -1,6 +1,6 @@
 import os
 import gradio as gr
-from huggingface_hub import InferenceClient
+import google.generativeai as genai
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader
 
@@ -9,82 +9,90 @@ load_dotenv()
 
 class AIAssistant:
     def __init__(self):
-        self.client = InferenceClient(
-            token=os.getenv('HF_API_KEY')  # Retrieve API key from environment variables
-        )
-        self.model = "mistralai/Mistral-7B-Instruct-v0.3"
+        try:
+            # Get API key from environment variable
+            api_key = os.getenv("GOOGLE_API_KEY")
+            if not api_key:
+                raise ValueError("API key not found. Please set the GOOGLE_API_KEY environment variable.")
+
+            # Configure Gemini API
+            genai.configure(api_key=api_key)
+
+            # Generation configuration
+            generation_config = {
+                'temperature': 0.7,
+                'top_p': 1.0,
+                'max_output_tokens': 2048
+            }
+
+            safety_settings = [
+                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
+            ]
+
+            # Initialize Gemini model
+            self.model = genai.GenerativeModel(
+                model_name='gemini-1.5-flash',
+                generation_config=generation_config,
+                safety_settings=safety_settings
+            )
+
+            print("Initialization complete!")
+        except Exception as e:
+            print(f"Initialization error: {str(e)}")
+            raise
+
+    def extract_pdf_text(self, pdf_file):
+        if pdf_file is None:
+            return ""
+        
+        try:
+            pdf_reader = PdfReader(pdf_file.name)
+            text = ""
+            for page in pdf_reader.pages:
+                text += page.extract_text() + "\n"
+            
+            return text[:10000]
+        except Exception as e:
+            print(f"PDF processing error: {str(e)}")
+            return f"PDF processing error: {str(e)}"
 
     def generate_response(self, prompt, language, tone, mode, topic, current_level, available_time, learning_method, goal, pdf_file):
         try:
-            # Process PDF file if uploaded
-            pdf_text = ""
-            if pdf_file is not None:
-                pdf_reader = PdfReader(pdf_file.name)
-                for page in pdf_reader.pages:
-                    pdf_text += page.extract_text()
+            # Extract PDF context
+            pdf_context = self.extract_pdf_text(pdf_file)
 
-            # Formulate message for the model based on mode
+            # Formulate input text based on mode
             if mode == "Chat":
-                user_content = f"{prompt}\n\nAdditional context from PDF:\n{pdf_text}" if pdf_text else prompt
-                system_content = (
-                    f"You are an AI assistant that follows these rules strictly:\n"
-                    f"1. Always respond in {language} (default: English)\n"
-                    f"2. Use {tone} tone\n"
-                    f"3. Keep responses concise and directly related to the question\n"
-                    f"4. Do not add unnecessary information or elaborations\n"
-                    f"5. If you don't know something, say so directly\n"
-                    f"6. Don't make assumptions beyond what's asked\n"
-                    f"7. Focus only on answering the specific question asked")
+                input_text = (
+                    f"Respond in {language} with a {tone} tone: {prompt}\n\n"
+                    f"Additional context from PDF (if available):\n{pdf_context}"
+                )
             else:  # Study plan mode
-                user_content = (
+                input_text = (
+                    f"Create a study plan in {language} with a {tone} tone.\n"
                     f"Topic: {topic}\n"
-                    f"Current level: {current_level}\n"
-                    f"Available time: {available_time}\n"
-                    f"Learning method: {learning_method}\n"
+                    f"Current Level: {current_level}\n"
+                    f"Available Time: {available_time} hours per week\n"
+                    f"Learning Method: {learning_method}\n"
                     f"Goal: {goal}\n"
-                )
-                system_content = (
-                    f"You are an educational planner that:\n"
-                    f"1. Creates structured study plans in {language} (default: English)\n"
-                    f"2. Uses {tone} tone\n"
-                    f"3. Focuses strictly on the provided parameters\n"
-                    f"4. Provides specific, actionable steps\n"
-                    f"5. Includes clear milestones and timeframes\n"
-                    f"6. Stays within the specified available time\n"
-                    f"7. Matches the learning method preference"
+                    f"Additional context from PDF (if available):\n{pdf_context}"
                 )
 
-            messages = [
-                {
-                    "role": "system",
-                    "content": system_content
-                },
-                {
-                    "role": "user",
-                    "content": user_content
-                }
-            ]
-
-            # Generate response using the model
-            response = self.client.text_generation(
-                prompt=messages[-1]["content"],
-                model=self.model,
-                max_new_tokens=500,
-                temperature=0.2,
-                top_p=0.8,
-                do_sample=True
-            )
-
-            return response
+            # Generate response
+            response = self.model.generate_content(input_text)
+            return response.text
 
         except Exception as e:
-            print(f"Error occurred: {str(e)}")  # Log the error
+            print(f"Error occurred: {str(e)}")
             return f"An error occurred: {str(e)}"
 
-# Create an instance of the assistant
+# Create assistant instance
 assistant = AIAssistant()
 
-# Define the Gradio interface
+# Gradio interface
 with gr.Blocks() as demo:
     gr.Markdown("# AI Educational Assistant")
     gr.Markdown("Ask questions and receive detailed answers")
@@ -147,38 +155,35 @@ with gr.Blocks() as demo:
                 submit_button = gr.Button("Get response")
                 clear_button = gr.Button("Clear history")
 
-    # Function to update field visibility based on selected mode
+    # Event handlers
     def update_fields(selected_mode):
         if selected_mode == "Study plan":
-            return gr.update(visible=True), gr.update(visible=True), gr.update(visible=True), gr.update(visible=True), gr.update(visible=True), gr.update(visible=False)
+            return [gr.update(visible=True)] * 5 + [gr.update(visible=False)]
         else:
-            return gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=True)
+            return [gr.update(visible=False)] * 5 + [gr.update(visible=True)]
 
-    # Function to clear the history
-    def clear_history():
-        return "", "", None  # Clear prompt, output, and PDF file
-
-    # Update field visibility when mode changes
     mode.change(
         update_fields,
         inputs=[mode],
         outputs=[topic, current_level, available_time, learning_method, goal, prompt]
     )
 
-    # Define action when submit button is clicked
     submit_button.click(
         fn=assistant.generate_response,
-        inputs=[prompt, language, tone, mode, topic, current_level, available_time, learning_method, goal, pdf_file],
+        inputs=[prompt, language, tone, mode, topic, current_level, 
+                available_time, learning_method, goal, pdf_file],
         outputs=output
     )
 
-    # Define action when clear button is clicked
+    def clear_history():
+        return "", "", None
+
     clear_button.click(
         fn=clear_history,
         inputs=[],
         outputs=[prompt, output, pdf_file]
     )
 
-# Launch the application
+# Launch the app
 if __name__ == "__main__":
     demo.launch()
